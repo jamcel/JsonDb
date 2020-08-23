@@ -16,11 +16,10 @@ $methodGetDbDataReordered = {
 
 #***************************************************
 #
-$methodSaveToFile = {
-  Write-Host "Updating JSON database file $($this.dbFilePath)"
-  $a=$this.getDbDataReordered()
-  $b= $a | ConvertTo-Json
-  $b | out-file $this.dbFilePath
+$methodSaveToFile = { param($depth=20)
+    Write-Host "Updating JSON database file $($this.dbFilePath)"
+    $dbData=$this.getDbDataReordered()
+    ConvertTo-Json $dbData -Depth $depth | out-file $this.dbFilePath
 }
 
 #***************************************************
