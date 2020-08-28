@@ -134,7 +134,9 @@ $methodAddItemPermanently={
 }
 
 #***************************************************
-# Constructor
+# Create a json-db object (not the file)
+# If the file already exists load the data from it.
+#
 function Initialize-JsonDb{
   [cmdletbinding()]
   param(
