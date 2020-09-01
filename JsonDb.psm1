@@ -55,12 +55,11 @@ function Get-JsonDbDataReordered {
 #***************************************************
 #
  function Save-JsonDbToFile {
-     param($jsonDb, $depth=20, $forceDirCreate=$false)
+    param($jsonDb, $depth=20, $forceDirCreate=$false)
     Write-Host "Updating JSON database file $($jsonDb.dbFilePath)"
     $dbData=$jsonDb.getDbDataReordered()
     $dirPath = (split-path $jsonDb.dbFilePath)
     if(-not (Test-IsDirectory $dirPath )){
-
         if($forceDirCreate){
             New-Item -path $dirPath -ItemType Directory -Force
         }else{
@@ -75,6 +74,9 @@ function Get-JsonDbDataReordered {
         }
     }
     ConvertTo-Json $dbData -Depth $depth | out-file $jsonDb.dbFilePath
+    # Update cache infos and data
+    $jsonDb.dbFileLastWriteTime = (get-item $jsonDb.dbFilePath).LastWriteTime
+    $jsonDb.cachedDataDontModify = New-ClonedObject $jsonDb.data
 }
 
 #***************************************************
@@ -134,6 +136,19 @@ function Restore-JsonDbFromFile {
     }
 
     if(Test-Path $jsonDb.dbFilePath){
+
+        $getFromFile = (($null -eq $jsonDb.cachedDataDontModify) -or ($null -eq $jsonDb.dbFileLastWriteTime))
+        if(-not $getFromFile){
+            $getFromFile= $jsonDb.dbFileLastWriteTime -ne (get-item $jsonDb.dbFilePath).LastWriteTime
+        }
+
+        if(-not $getFromFile){
+            $jsonDb.data = New-ClonedObject $jsonDb.cachedDataDontModify
+            return
+        }
+
+        $jsonDb.dbFileLastWriteTime = (get-item $jsonDb.dbFilePath).LastWriteTime
+
         # deprecated props won't be imported and will be overwritten/deleted at next DB write action for its parent
         Write-Host "Loading json database from file $($jsonDb.dbFilePath)" -ForegroundColor Green
         $data = (Get-Content $jsonDb.dbFilePath | Out-String)
@@ -157,11 +172,13 @@ function Restore-JsonDbFromFile {
             }
         # don't trust the order in the file
         $jsonDb.data = $jsonDb.getDbDataReordered()
+        $jsonDb.cachedDataDontModify = New-ClonedObject $jsonDb.data
         }else{
-        Write-Warning "Json database file not found: $($jsonDb.dbFilePath)"
-        Write-Warning "--> starting with empty local DB."
-        $jsonDb.data = [ordered]@{}
-        $jsonDb.saveToFile()
+            Write-Warning "Json database file not found: $($jsonDb.dbFilePath)"
+            Write-Warning "--> starting with empty local DB."
+            $jsonDb.data = [ordered]@{}
+            $jsonDb.cachedDataDontModify = [ordered]@{}
+            $jsonDb.saveToFile()
         }
     }
 }
@@ -210,8 +227,10 @@ function Initialize-JsonDb{
   $currDb = [PSCustomObject]@{
     name = $name
     dbFilePath = $filePath
+    dbFileLastWriteTime = get-date
     orderBy = $orderBy
     data = [ordered]@{}
+    cachedDataDontModify = [ordered]@{}
     backupDirName = "bak"
     deprecatedPropNames=@()
     newDefaultProps=@{}
@@ -221,7 +240,7 @@ function Initialize-JsonDb{
     -Value { Restore-JsonDbFromFile $this }
 
   Add-Member -name saveToFile -InputObject $currDb -MemberType ScriptMethod `
-    -Value { param($depth,$forceDirCreate = $false); Save-JsonDbToFile $this $depth $forceDirCreate}
+    -Value { param($depth,$forceDirCreate = $false);  Save-JsonDbToFile $this @PSBoundParameters}
 
   Add-Member -name reset -InputObject $currDb -MemberType ScriptMethod `
     -Value { Reset-JsonDb $this }
